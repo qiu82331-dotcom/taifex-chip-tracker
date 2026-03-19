@@ -860,6 +860,11 @@ def main():
         bt = trades_df.copy()
         bt["進場日期"] = pd.to_datetime(bt["進場日期"]).dt.strftime("%Y/%m/%d")
         bt["出場日期"] = pd.to_datetime(bt["出場日期"]).dt.strftime("%Y/%m/%d")
+        for c in ["進場價", "出場價", "持有天數", "損益點數", "損益金額", "累計金額", "帳戶餘額"]:
+            if c in bt.columns:
+                bt[c] = bt[c].astype(int)
+        bt = bt[["進場日期", "進場價", "出場日期", "出場價", "持有天數",
+                 "損益點數", "損益金額", "累計金額", "帳戶餘額", "報酬率(%)", "勝負"]]
         bt.to_csv(str(data_dir / "backtest.csv"), index=False, encoding="utf-8-sig")
 
     # monthly.csv — 從 trades_df 聚合
@@ -875,6 +880,8 @@ def main():
         monthly_csv.rename(columns={"month": "月份"}, inplace=True)
         monthly_csv["敗場"] = monthly_csv["交易數"] - monthly_csv["勝場"]
         monthly_csv["勝率(%)"] = (monthly_csv["勝場"] / monthly_csv["交易數"] * 100).round(1)
+        for c in ["月損益點數", "月損益金額"]:
+            monthly_csv[c] = monthly_csv[c].astype(int)
         monthly_csv = monthly_csv[["月份", "交易數", "勝場", "敗場", "勝率(%)", "月損益點數", "月損益金額"]]
         monthly_csv.to_csv(str(data_dir / "monthly.csv"), index=False, encoding="utf-8-sig")
 
@@ -899,6 +906,8 @@ def main():
             bal += row["年損益金額"]
         yearly_csv["年初餘額"] = start_bals
         yearly_csv["年報酬率(%)"] = (yearly_csv["年損益金額"] / yearly_csv["年初餘額"] * 100).round(1)
+        for c in ["年損益點數", "年損益金額", "年初餘額"]:
+            yearly_csv[c] = yearly_csv[c].astype(int)
         yearly_csv = yearly_csv[["年度", "交易數", "勝場", "敗場", "勝率(%)", "年損益點數", "年損益金額", "年初餘額", "年報酬率(%)"]]
         yearly_csv.to_csv(str(data_dir / "yearly.csv"), index=False, encoding="utf-8-sig")
 
