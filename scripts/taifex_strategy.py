@@ -341,7 +341,10 @@ def compute_all(df):
     # 信號 (v2: 進場門檻5000, 出場連3天負)
     df["信號"] = ""
     df["操作"] = ""
+    df["最大回落"] = np.nan
+    df["最低保證金"] = np.nan
     position = False
+    highest_since_entry = 0
 
     for i in range(len(df)):
         m = df.loc[i, "主力"]
@@ -385,6 +388,20 @@ def compute_all(df):
             df.loc[i, "操作"] = "續抱"
         else:
             df.loc[i, "操作"] = "觀望"
+
+        # 最大回落 & 最低保證金
+        close = df.loc[i, "收盤"] if pd.notna(df.loc[i, "收盤"]) else 0
+        op = df.loc[i, "操作"]
+        if op == "👉 隔天進場":
+            highest_since_entry = close
+            df.loc[i, "最大回落"] = 0
+            df.loc[i, "最低保證金"] = 71750
+        elif position:
+            if close > highest_since_entry:
+                highest_since_entry = close
+            drawdown = close - highest_since_entry
+            df.loc[i, "最大回落"] = drawdown
+            df.loc[i, "最低保證金"] = 71750 + abs(drawdown) * 50
 
     return df
 
@@ -533,10 +550,10 @@ def write_excel(df, trades_df, val_df):
     ws1 = wb.active
     ws1.title = "籌碼紀錄"
     cols1 = ["date", "星期", "開盤", "收盤", "近月", "遠月", "小散戶", "微散戶",
-             "結算近減散戶", "主力", "籌碼", "信號", "操作"]
+             "結算近減散戶", "主力", "籌碼", "最大回落", "最低保證金", "信號", "操作"]
     hdrs1 = ["日期", "星期", "開盤", "收盤", "近月", "遠月", "小散戶", "微散戶",
-             "結算近-散戶", "主力", "籌碼", "信號", "操作"]
-    widths1 = [12, 6, 10, 10, 14, 14, 14, 14, 14, 14, 14, 18, 14]
+             "結算近-散戶", "主力", "籌碼", "最大回落", "最低保證金", "信號", "操作"]
+    widths1 = [12, 6, 10, 10, 14, 14, 14, 14, 14, 14, 14, 12, 14, 18, 14]
     write_header(ws1, hdrs1, widths1)
 
     display = df[df.get("收盤", pd.Series(dtype=float)).notna()].copy() if "收盤" in df.columns else df.copy()
@@ -552,13 +569,15 @@ def write_excel(df, trades_df, val_df):
             val = row.get(col, "")
             if col == "date":
                 val = str(val)[:10].replace("-", "/")
-            elif col in ("小散戶", "微散戶") and pd.isna(val):
+            elif col in ("小散戶", "微散戶", "最大回落", "最低保證金") and (pd.isna(val) if isinstance(val, float) else False):
                 val = ""
             cell = ws1.cell(row=ri, column=ci, value=val)
             cell.border = border
             if col in ("近月", "遠月", "小散戶", "微散戶", "結算近減散戶", "主力", "籌碼",
-                        "開盤", "收盤"):
+                        "開盤", "收盤", "最大回落"):
                 cell.number_format = num_fmt
+            if col == "最低保證金" and val != "":
+                cell.number_format = "$#,##0"
             if row_fill:
                 cell.fill = row_fill
             # Conditional formatting
@@ -569,6 +588,13 @@ def write_excel(df, trades_df, val_df):
                     cell.font = green_bold
                 elif val < -100:
                     cell.font = red_bold
+            if col == "最大回落" and isinstance(val, (int, float)):
+                if val < -300:
+                    cell.font = red_bold
+                elif val < 0:
+                    cell.font = red_font
+            if col == "最低保證金" and isinstance(val, (int, float)):
+                cell.font = red_font if val > 120000 else green_font
             if col == "操作" and isinstance(val, str):
                 if "隔天進場" in val:
                     cell.font = green_bold

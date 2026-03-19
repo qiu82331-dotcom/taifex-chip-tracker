@@ -82,8 +82,8 @@ def main():
     # 讀取5天前主力（column 10）→ 給籌碼計算用
     main_5d_ago = read_main(max(last_row - 4, 2))
 
-    # 讀取昨天操作欄（column 13）判斷是否持倉
-    last_op = ws.cell(row=last_row, column=13).value or ""
+    # 讀取昨天操作欄（column 15）判斷是否持倉
+    last_op = ws.cell(row=last_row, column=15).value or ""
     is_holding = last_op in ("續抱", "👉 隔天進場")
 
     print(f"  最後日期：{last_date}")
@@ -173,6 +173,30 @@ def main():
     weekday_map = {0: "一", 1: "二", 2: "三", 3: "四", 4: "五"}
     星期 = weekday_map[today.weekday()]
 
+    # ── Step 6b: 計算最大回落 & 最低保證金 ──
+    最大回落 = ""
+    最低保證金 = ""
+    if 操作 == "👉 隔天進場":
+        最大回落 = 0
+        最低保證金 = 71750
+    elif is_holding or 操作 == "續抱":
+        # 往上掃描找最近的「👉 隔天進場」
+        entry_row = last_row
+        while entry_row > 1:
+            op_val = ws.cell(row=entry_row, column=15).value or ""
+            if op_val == "👉 隔天進場":
+                break
+            entry_row -= 1
+        # 從進場列到昨天取最高收盤
+        highest = 0
+        for r in range(entry_row, last_row + 1):
+            c_val = ws.cell(row=r, column=4).value
+            if c_val is not None and isinstance(c_val, (int, float)) and c_val > highest:
+                highest = c_val
+        highest = max(highest, 收盤)
+        最大回落 = 收盤 - highest
+        最低保證金 = 71750 + abs(最大回落) * 50
+
     # ── Step 7: 寫入 Excel ──
     new_row = last_row + 1
     border = Border(
@@ -197,16 +221,22 @@ def main():
     ws.cell(row=new_row, column=9, value=結算近減散戶)
     ws.cell(row=new_row, column=10, value=主力)
     ws.cell(row=new_row, column=11, value=籌碼)
-    ws.cell(row=new_row, column=12, value=信號)
-    ws.cell(row=new_row, column=13, value=操作)
+    ws.cell(row=new_row, column=12, value=最大回落)
+    ws.cell(row=new_row, column=13, value=最低保證金)
+    ws.cell(row=new_row, column=14, value=信號)
+    ws.cell(row=new_row, column=15, value=操作)
 
     # 邊框 + 數字格式
-    for col in range(1, 14):
+    for col in range(1, 16):
         ws.cell(row=new_row, column=col).border = border
     for col in [3, 4, 5, 6, 7, 8, 9, 10, 11]:
         cell = ws.cell(row=new_row, column=col)
         if cell.value != "":
             cell.number_format = num_fmt
+    if 最大回落 != "":
+        ws.cell(row=new_row, column=12).number_format = num_fmt
+    if 最低保證金 != "":
+        ws.cell(row=new_row, column=13).number_format = "$#,##0"
 
     # 主力顏色
     if 主力 > 0:
@@ -220,24 +250,38 @@ def main():
     elif 籌碼 < -100:
         ws.cell(row=new_row, column=11).font = red_bold
 
+    # 最大回落顏色
+    if isinstance(最大回落, (int, float)):
+        if 最大回落 < -300:
+            ws.cell(row=new_row, column=12).font = red_bold
+        elif 最大回落 < 0:
+            ws.cell(row=new_row, column=12).font = red_font
+
+    # 最低保證金顏色
+    if isinstance(最低保證金, (int, float)):
+        if 最低保證金 > 120000:
+            ws.cell(row=new_row, column=13).font = red_font
+        else:
+            ws.cell(row=new_row, column=13).font = green_font
+
     # 操作欄顏色
     if "隔天進場" in 操作:
-        ws.cell(row=new_row, column=13).font = green_bold
+        ws.cell(row=new_row, column=15).font = green_bold
     elif "隔天出場" in 操作:
-        ws.cell(row=new_row, column=13).font = red_bold
+        ws.cell(row=new_row, column=15).font = red_bold
     elif 操作 == "續抱":
-        ws.cell(row=new_row, column=13).font = green_font
+        ws.cell(row=new_row, column=15).font = green_font
     elif 操作 == "觀望":
-        ws.cell(row=new_row, column=13).font = gray_font
+        ws.cell(row=new_row, column=15).font = gray_font
 
     # 翻多翻空整列底色
     if "翻多" in 信號:
         fill = PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid")
-        for col in range(1, 14):
+        for col in range(1, 16):
             ws.cell(row=new_row, column=col).fill = fill
     elif "翻空" in 信號:
         fill = PatternFill(start_color="FCE4EC", end_color="FCE4EC", fill_type="solid")
-        for col in range(1, 14):
+        for col in range(1, 16):
             ws.cell(row=new_row, column=col).fill = fill
 
     wb.save(str(EXCEL_FILE))
