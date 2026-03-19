@@ -26,6 +26,7 @@ DATA_DIR = ROOT / "data"
 DATA_DIR.mkdir(exist_ok=True)
 EXCEL_FILE = OUTPUT_DIR / "台指期籌碼追蹤.xlsx"
 PARQUET_FILE = DATA_DIR / "taifex_raw.parquet"
+INITIAL_CAPITAL = 150000
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -581,11 +582,14 @@ def write_excel(df, trades_df, val_df):
     # --- Sheet 2: 小台回測 ---
     ws2 = wb.create_sheet("小台回測")
     hdrs2 = ["進場日期", "進場價", "出場日期", "出場價", "持有天數",
-             "損益點數", "損益金額", "累計金額", "勝負"]
-    widths2 = [12, 10, 12, 10, 10, 12, 12, 14, 8]
+             "損益點數", "損益金額", "累計金額", "帳戶餘額", "報酬率(%)", "勝負"]
+    widths2 = [12, 10, 12, 10, 10, 12, 12, 14, 14, 12, 8]
     write_header(ws2, hdrs2, widths2)
 
     if not trades_df.empty:
+        trades_df["帳戶餘額"] = INITIAL_CAPITAL + trades_df["累計金額"]
+        trades_df["報酬率(%)"] = (trades_df["累計金額"] / INITIAL_CAPITAL * 100).round(1)
+
         for ri, (_, row) in enumerate(trades_df.iterrows(), 2):
             for ci, col in enumerate(hdrs2, 1):
                 val = row.get(col, "")
@@ -593,8 +597,10 @@ def write_excel(df, trades_df, val_df):
                     val = str(val)[:10].replace("-", "/")
                 cell = ws2.cell(row=ri, column=ci, value=val)
                 cell.border = border
-                if col in ("進場價", "出場價", "損益點數", "損益金額", "累計金額"):
+                if col in ("進場價", "出場價", "損益點數", "損益金額", "累計金額", "帳戶餘額"):
                     cell.number_format = num_fmt
+                if col == "報酬率(%)":
+                    cell.number_format = "0.0"
                 if col == "損益金額" and isinstance(val, (int, float)):
                     cell.font = green_font if val > 0 else red_font
                 if col == "勝負":
@@ -604,6 +610,7 @@ def write_excel(df, trades_df, val_df):
         r_sum = len(trades_df) + 2
         wins = (trades_df["勝負"] == "勝").sum()
         total = len(trades_df)
+        total_pnl = trades_df["損益金額"].sum()
         ws2.cell(row=r_sum, column=1, value="合計").font = Font(bold=True)
         ws2.cell(row=r_sum, column=2, value=f"{total}筆").font = Font(bold=True)
         ws2.cell(row=r_sum, column=5,
@@ -611,9 +618,15 @@ def write_excel(df, trades_df, val_df):
         c_pts = ws2.cell(row=r_sum, column=6, value=trades_df["損益點數"].sum())
         c_pts.number_format = num_fmt
         c_pts.font = Font(bold=True)
-        c_money = ws2.cell(row=r_sum, column=7, value=trades_df["損益金額"].sum())
+        c_money = ws2.cell(row=r_sum, column=7, value=total_pnl)
         c_money.number_format = num_fmt
         c_money.font = Font(bold=True)
+        c_bal = ws2.cell(row=r_sum, column=9, value=INITIAL_CAPITAL + total_pnl)
+        c_bal.number_format = num_fmt
+        c_bal.font = Font(bold=True)
+        c_ret = ws2.cell(row=r_sum, column=10, value=round(total_pnl / INITIAL_CAPITAL * 100, 1))
+        c_ret.number_format = "0.0"
+        c_ret.font = Font(bold=True)
 
     # --- Sheet 3: 月度績效 ---
     ws3 = wb.create_sheet("月度績效")
@@ -646,8 +659,8 @@ def write_excel(df, trades_df, val_df):
 
     # --- Sheet 4: 年度績效 ---
     ws4 = wb.create_sheet("年度績效")
-    hdrs4 = ["年度", "交易數", "勝場", "敗場", "勝率(%)", "年損益點數", "年損益金額"]
-    write_header(ws4, hdrs4, [10, 10, 10, 10, 10, 14, 14])
+    hdrs4 = ["年度", "交易數", "勝場", "敗場", "勝率(%)", "年損益點數", "年損益金額", "年初餘額", "年報酬率(%)"]
+    write_header(ws4, hdrs4, [10, 10, 10, 10, 10, 14, 14, 14, 12])
     if not trades_df.empty:
         tdf["year"] = pd.to_datetime(tdf["出場日期"]).dt.year
         yearly = tdf.groupby("year").agg(
@@ -658,6 +671,14 @@ def write_excel(df, trades_df, val_df):
         ).reset_index()
         yearly["losses"] = yearly["n"] - yearly["wins"]
         yearly["wr"] = (yearly["wins"] / yearly["n"] * 100).round(1)
+        # 計算年初餘額和年報酬率
+        bal = INITIAL_CAPITAL
+        start_bals = []
+        for _, row in yearly.iterrows():
+            start_bals.append(bal)
+            bal += row["pnl"]
+        yearly["start_bal"] = start_bals
+        yearly["yearly_ret"] = (yearly["pnl"] / yearly["start_bal"] * 100).round(1)
         for ri, (_, row) in enumerate(yearly.iterrows(), 2):
             ws4.cell(row=ri, column=1, value=int(row["year"])).border = border
             ws4.cell(row=ri, column=2, value=int(row["n"])).border = border
@@ -669,6 +690,11 @@ def write_excel(df, trades_df, val_df):
             c.border = border
             c = ws4.cell(row=ri, column=7, value=row["pnl"])
             c.number_format = num_fmt
+            c.border = border
+            c = ws4.cell(row=ri, column=8, value=row["start_bal"])
+            c.number_format = num_fmt
+            c.border = border
+            c = ws4.cell(row=ri, column=9, value=row["yearly_ret"])
             c.border = border
 
     # --- Sheet 5: 公式驗證 ---
@@ -820,7 +846,65 @@ def main():
     print("  📝 Step 5: 產出 Excel")
     write_excel(df, trades_df, val_df)
 
-    # --- Step 6: Summary ---
+    # --- Step 6: 產出 CSV ---
+    print("  📄 Step 6: 產出 CSV")
+    data_dir = ROOT / "data"
+
+    # chip_history.csv — 從 Excel 讀 Sheet 1
+    df_excel = pd.read_excel(str(EXCEL_FILE), sheet_name="籌碼紀錄")
+    df_excel["日期"] = df_excel["日期"].astype(str).str[:10]
+    df_excel.to_csv(str(data_dir / "chip_history.csv"), index=False, encoding="utf-8-sig")
+
+    # backtest.csv — 從 trades_df
+    if not trades_df.empty:
+        bt = trades_df.copy()
+        bt["進場日期"] = pd.to_datetime(bt["進場日期"]).dt.strftime("%Y/%m/%d")
+        bt["出場日期"] = pd.to_datetime(bt["出場日期"]).dt.strftime("%Y/%m/%d")
+        bt.to_csv(str(data_dir / "backtest.csv"), index=False, encoding="utf-8-sig")
+
+    # monthly.csv — 從 trades_df 聚合
+    if not trades_df.empty:
+        tdf_m = trades_df.copy()
+        tdf_m["month"] = pd.to_datetime(tdf_m["出場日期"]).dt.to_period("M").astype(str)
+        monthly_csv = tdf_m.groupby("month").agg(
+            交易數=("損益金額", "count"),
+            勝場=("勝負", lambda x: (x == "勝").sum()),
+            月損益點數=("損益點數", "sum"),
+            月損益金額=("損益金額", "sum"),
+        ).reset_index()
+        monthly_csv.rename(columns={"month": "月份"}, inplace=True)
+        monthly_csv["敗場"] = monthly_csv["交易數"] - monthly_csv["勝場"]
+        monthly_csv["勝率(%)"] = (monthly_csv["勝場"] / monthly_csv["交易數"] * 100).round(1)
+        monthly_csv = monthly_csv[["月份", "交易數", "勝場", "敗場", "勝率(%)", "月損益點數", "月損益金額"]]
+        monthly_csv.to_csv(str(data_dir / "monthly.csv"), index=False, encoding="utf-8-sig")
+
+    # yearly.csv — 從 trades_df 聚合
+    if not trades_df.empty:
+        tdf_y = trades_df.copy()
+        tdf_y["year"] = pd.to_datetime(tdf_y["出場日期"]).dt.year
+        yearly_csv = tdf_y.groupby("year").agg(
+            交易數=("損益金額", "count"),
+            勝場=("勝負", lambda x: (x == "勝").sum()),
+            年損益點數=("損益點數", "sum"),
+            年損益金額=("損益金額", "sum"),
+        ).reset_index()
+        yearly_csv.rename(columns={"year": "年度"}, inplace=True)
+        yearly_csv["敗場"] = yearly_csv["交易數"] - yearly_csv["勝場"]
+        yearly_csv["勝率(%)"] = (yearly_csv["勝場"] / yearly_csv["交易數"] * 100).round(1)
+        # 年初餘額和年報酬率
+        bal = INITIAL_CAPITAL
+        start_bals = []
+        for _, row in yearly_csv.iterrows():
+            start_bals.append(bal)
+            bal += row["年損益金額"]
+        yearly_csv["年初餘額"] = start_bals
+        yearly_csv["年報酬率(%)"] = (yearly_csv["年損益金額"] / yearly_csv["年初餘額"] * 100).round(1)
+        yearly_csv = yearly_csv[["年度", "交易數", "勝場", "敗場", "勝率(%)", "年損益點數", "年損益金額", "年初餘額", "年報酬率(%)"]]
+        yearly_csv.to_csv(str(data_dir / "yearly.csv"), index=False, encoding="utf-8-sig")
+
+    print(f"    ✅ 4 個 CSV 已儲存到 {data_dir}")
+
+    # --- Step 7: Summary ---
     print(f"\n{'═'*60}")
     print(f"  策略 v2 更新完成")
     print(f"{'═'*60}")
