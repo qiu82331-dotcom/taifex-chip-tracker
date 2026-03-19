@@ -257,7 +257,9 @@ def main():
 
     # ── Step 7c: 產出 latest.csv（給 Google Sheet 讀）──
     df_excel = pd.read_excel(str(EXCEL_FILE), sheet_name="籌碼紀錄")
-    latest = df_excel.tail(50)
+    latest = df_excel.tail(50).copy()
+    # 日期轉純文字避免 Google Sheet 轉成序號
+    latest["日期"] = latest["日期"].astype(str).str[:10]
     latest.to_csv(str(CSV_FILE), index=False, encoding="utf-8-sig")
     print(f"  CSV 已更新: {CSV_FILE}")
 
