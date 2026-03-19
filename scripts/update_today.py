@@ -20,7 +20,7 @@ warnings.filterwarnings("ignore")
 
 ROOT = Path(__file__).resolve().parent.parent
 EXCEL_FILE = ROOT / "output" / "台指期籌碼追蹤.xlsx"
-CSV_FILE = ROOT / "data" / "latest.csv"
+CSV_FILE = ROOT / "data" / "chip_history.csv"
 PARQUET_FILE = ROOT / "data" / "taifex_raw.parquet"
 LOG_DIR = ROOT / "logs"
 LOG_DIR.mkdir(exist_ok=True)
@@ -255,12 +255,10 @@ def main():
         df_cache = pd.concat([df_cache, pd.DataFrame([new_record])], ignore_index=True)
         df_cache.to_parquet(str(PARQUET_FILE), index=False)
 
-    # ── Step 7c: 產出 latest.csv（給 Google Sheet 讀）──
+    # ── Step 7c: 產出 chip_history.csv（給 Google Sheet 讀）──
     df_excel = pd.read_excel(str(EXCEL_FILE), sheet_name="籌碼紀錄")
-    latest = df_excel.tail(50).copy()
-    # 日期轉純文字避免 Google Sheet 轉成序號
-    latest["日期"] = latest["日期"].astype(str).str[:10]
-    latest.to_csv(str(CSV_FILE), index=False, encoding="utf-8-sig")
+    df_excel["日期"] = df_excel["日期"].astype(str).str[:10]
+    df_excel.to_csv(str(CSV_FILE), index=False, encoding="utf-8-sig")
     print(f"  CSV 已更新: {CSV_FILE}")
 
     # ── Step 8: 印出結果 ──
