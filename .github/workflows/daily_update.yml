@@ -1,0 +1,33 @@
+name: Daily Chip Update
+
+  on:
+    schedule:
+      - cron: '0 10 * * 1-5'
+    workflow_dispatch:
+
+  jobs:
+    update:
+      runs-on: ubuntu-latest
+
+      steps:
+        - name: Checkout repo
+          uses: actions/checkout@v4
+
+        - name: Setup Python
+          uses: actions/setup-python@v5
+          with:
+            python-version: '3.11'
+
+        - name: Install dependencies
+          run: pip install -r requirements.txt
+
+        - name: Run daily update
+          run: python scripts/update_today.py
+
+        - name: Commit and push results
+          run: |
+            git config user.name "GitHub Actions Bot"
+            git config user.email "actions@github.com"
+            git add data/latest.csv data/taifex_raw.parquet "output/台指期籌碼追蹤.xlsx"
+            git diff --staged --quiet || git commit -m "更新 $(TZ=Asia/Taipei date +%Y/%m/%d) 籌碼數據"
+            git push
