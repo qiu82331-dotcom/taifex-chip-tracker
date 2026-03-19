@@ -28,6 +28,6 @@ jobs:
           run: |
             git config user.name "GitHub Actions Bot"
             git config user.email "actions@github.com"
-            git add data/latest.csv data/taifex_raw.parquet "output/台指期籌碼追蹤.xlsx"
+            git add data/chip_history.csv data/backtest.csv data/monthly.csv data/yearly.csv data/taifex_raw.parquet "output/台指期籌碼追蹤.xlsx"
             git diff --staged --quiet || git commit -m "更新 $(TZ=Asia/Taipei date +%Y/%m/%d) 籌碼數據"
             git push
