@@ -173,29 +173,24 @@ def main():
     weekday_map = {0: "一", 1: "二", 2: "三", 3: "四", 4: "五"}
     星期 = weekday_map[today.weekday()]
 
-    # ── Step 6b: 計算最大回落 & 最低保證金 ──
-    最大回落 = ""
+    # ── Step 6b: 計算未實現損益 & 最低保證金 ──
+    未實現損益 = ""
     最低保證金 = ""
     if 操作 == "👉 隔天進場":
-        最大回落 = 0
+        未實現損益 = 0
         最低保證金 = 71750
     elif 操作 in ("續抱", "👉 隔天出場"):
-        # 往上掃描找最近的「👉 隔天進場」
+        # 往上掃描找最近的「👉 隔天進場」，進場價 = 那列下一列的開盤
         entry_row = last_row
         while entry_row > 1:
             op_val = ws.cell(row=entry_row, column=15).value or ""
             if op_val == "👉 隔天進場":
                 break
             entry_row -= 1
-        # 從進場列到昨天取最高收盤
-        highest = 0
-        for r in range(entry_row, last_row + 1):
-            c_val = ws.cell(row=r, column=4).value
-            if c_val is not None and isinstance(c_val, (int, float)) and c_val > highest:
-                highest = c_val
-        highest = max(highest, 收盤)
-        最大回落 = 收盤 - highest
-        最低保證金 = 71750 + abs(最大回落) * 50
+        entry_price = ws.cell(row=entry_row + 1, column=3).value or 0
+        pnl = 收盤 - entry_price
+        未實現損益 = pnl
+        最低保證金 = 71750 + abs(pnl) * 50 if pnl < 0 else 71750
 
     # ── Step 7: 寫入 Excel ──
     new_row = last_row + 1
@@ -221,7 +216,7 @@ def main():
     ws.cell(row=new_row, column=9, value=結算近減散戶)
     ws.cell(row=new_row, column=10, value=主力)
     ws.cell(row=new_row, column=11, value=籌碼)
-    ws.cell(row=new_row, column=12, value=最大回落)
+    ws.cell(row=new_row, column=12, value=未實現損益)
     ws.cell(row=new_row, column=13, value=最低保證金)
     ws.cell(row=new_row, column=14, value=信號)
     ws.cell(row=new_row, column=15, value=操作)
@@ -233,7 +228,7 @@ def main():
         cell = ws.cell(row=new_row, column=col)
         if cell.value != "":
             cell.number_format = num_fmt
-    if 最大回落 != "":
+    if 未實現損益 != "":
         ws.cell(row=new_row, column=12).number_format = num_fmt
     if 最低保證金 != "":
         ws.cell(row=new_row, column=13).number_format = "$#,##0"
@@ -250,12 +245,14 @@ def main():
     elif 籌碼 < -100:
         ws.cell(row=new_row, column=11).font = red_bold
 
-    # 最大回落顏色
-    if isinstance(最大回落, (int, float)):
-        if 最大回落 < -300:
+    # 未實現損益顏色
+    if isinstance(未實現損益, (int, float)):
+        if 未實現損益 < -300:
             ws.cell(row=new_row, column=12).font = red_bold
-        elif 最大回落 < 0:
+        elif 未實現損益 < 0:
             ws.cell(row=new_row, column=12).font = red_font
+        elif 未實現損益 > 0:
+            ws.cell(row=new_row, column=12).font = green_font
 
     # 最低保證金顏色
     if isinstance(最低保證金, (int, float)):
