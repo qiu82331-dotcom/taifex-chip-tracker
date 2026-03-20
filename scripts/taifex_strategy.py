@@ -656,8 +656,8 @@ def write_excel(df, trades_df, val_df):
 
     # --- Sheet 3: 月度績效 ---
     ws3 = wb.create_sheet("月度績效")
-    hdrs3 = ["月份", "交易數", "勝場", "敗場", "勝率(%)", "月損益點數", "月損益金額"]
-    write_header(ws3, hdrs3, [12, 10, 10, 10, 10, 14, 14])
+    hdrs3 = ["月份", "交易數", "勝場", "敗場", "勝率(%)", "月損益點數", "月損益金額", "月初餘額", "月報酬率(%)"]
+    write_header(ws3, hdrs3, [12, 10, 10, 10, 10, 14, 14, 14, 12])
     if not trades_df.empty:
         tdf = trades_df.copy()
         tdf["month"] = pd.to_datetime(tdf["出場日期"]).dt.to_period("M")
@@ -669,6 +669,14 @@ def write_excel(df, trades_df, val_df):
         ).reset_index()
         monthly["losses"] = monthly["n"] - monthly["wins"]
         monthly["wr"] = (monthly["wins"] / monthly["n"] * 100).round(1)
+        # 計算月初餘額和月報酬率
+        cumsum = 0
+        start_bals = []
+        for _, row in monthly.iterrows():
+            start_bals.append(INITIAL_CAPITAL + cumsum)
+            cumsum += row["pnl"]
+        monthly["start_bal"] = start_bals
+        monthly["monthly_ret"] = (monthly["pnl"] / monthly["start_bal"] * 100).round(1)
         for ri, (_, row) in enumerate(monthly.iterrows(), 2):
             ws3.cell(row=ri, column=1, value=str(row["month"])).border = border
             ws3.cell(row=ri, column=2, value=int(row["n"])).border = border
@@ -682,6 +690,11 @@ def write_excel(df, trades_df, val_df):
             c.number_format = num_fmt
             c.border = border
             c.font = green_font if row["pnl"] > 0 else red_font
+            c = ws3.cell(row=ri, column=8, value=row["start_bal"])
+            c.number_format = num_fmt
+            c.border = border
+            c = ws3.cell(row=ri, column=9, value=row["monthly_ret"])
+            c.border = border
 
     # --- Sheet 4: 年度績效 ---
     ws4 = wb.create_sheet("年度績效")
@@ -881,16 +894,13 @@ def main():
     df_excel["日期"] = df_excel["日期"].astype(str).str[:10]
     df_excel.to_csv(str(data_dir / "chip_history.csv"), index=False, encoding="utf-8-sig")
 
-    # backtest.csv — 從 trades_df
-    if not trades_df.empty:
-        bt = trades_df.copy()
-        bt["進場日期"] = pd.to_datetime(bt["進場日期"]).dt.strftime("%Y/%m/%d")
-        bt["出場日期"] = pd.to_datetime(bt["出場日期"]).dt.strftime("%Y/%m/%d")
-        for c in ["進場價", "出場價", "持有天數", "損益點數", "損益金額", "累計金額", "帳戶餘額"]:
-            if c in bt.columns:
-                bt[c] = bt[c].astype(int)
-        bt = bt[["進場日期", "進場價", "出場日期", "出場價", "持有天數",
-                 "損益點數", "損益金額", "累計金額", "帳戶餘額", "報酬率(%)", "勝負"]]
+    # backtest.csv — 從 Excel 讀（含合計列）
+    bt = pd.read_excel(str(EXCEL_FILE), sheet_name="小台回測")
+    if not bt.empty:
+        bt["進場日期"] = pd.to_datetime(bt["進場日期"], errors="coerce").dt.strftime("%Y/%m/%d")
+        bt["出場日期"] = pd.to_datetime(bt["出場日期"], errors="coerce").dt.strftime("%Y/%m/%d")
+        bt.loc[bt["進場日期"] == "NaT", "進場日期"] = "合計"
+        bt.loc[bt["出場日期"] == "NaT", "出場日期"] = ""
         bt.to_csv(str(data_dir / "backtest.csv"), index=False, encoding="utf-8-sig")
 
     # monthly.csv — 從 trades_df 聚合
@@ -908,7 +918,15 @@ def main():
         monthly_csv["勝率(%)"] = (monthly_csv["勝場"] / monthly_csv["交易數"] * 100).round(1)
         for c in ["月損益點數", "月損益金額"]:
             monthly_csv[c] = monthly_csv[c].astype(int)
-        monthly_csv = monthly_csv[["月份", "交易數", "勝場", "敗場", "勝率(%)", "月損益點數", "月損益金額"]]
+        # 月初餘額和月報酬率
+        cumsum = 0
+        start_bals = []
+        for _, row in monthly_csv.iterrows():
+            start_bals.append(int(INITIAL_CAPITAL + cumsum))
+            cumsum += row["月損益金額"]
+        monthly_csv["月初餘額"] = start_bals
+        monthly_csv["月報酬率(%)"] = (monthly_csv["月損益金額"] / monthly_csv["月初餘額"] * 100).round(1)
+        monthly_csv = monthly_csv[["月份", "交易數", "勝場", "敗場", "勝率(%)", "月損益點數", "月損益金額", "月初餘額", "月報酬率(%)"]]
         monthly_csv.to_csv(str(data_dir / "monthly.csv"), index=False, encoding="utf-8-sig")
 
     # yearly.csv — 從 trades_df 聚合
