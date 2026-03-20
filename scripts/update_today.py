@@ -179,7 +179,7 @@ def main():
     if 操作 == "👉 隔天進場":
         最大回落 = 0
         最低保證金 = 71750
-    elif is_holding or 操作 == "續抱":
+    elif 操作 in ("續抱", "👉 隔天出場"):
         # 往上掃描找最近的「👉 隔天進場」
         entry_row = last_row
         while entry_row > 1:

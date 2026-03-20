@@ -383,7 +383,6 @@ def compute_all(df):
             position = True
         elif position and is_exit:
             df.loc[i, "操作"] = "👉 隔天出場"
-            position = False
         elif position:
             df.loc[i, "操作"] = "續抱"
         else:
@@ -396,6 +395,13 @@ def compute_all(df):
             highest_since_entry = close
             df.loc[i, "最大回落"] = 0
             df.loc[i, "最低保證金"] = 71750
+        elif op == "👉 隔天出場":
+            if close > highest_since_entry:
+                highest_since_entry = close
+            drawdown = close - highest_since_entry
+            df.loc[i, "最大回落"] = drawdown
+            df.loc[i, "最低保證金"] = 71750 + abs(drawdown) * 50
+            position = False
         elif position:
             if close > highest_since_entry:
                 highest_since_entry = close
