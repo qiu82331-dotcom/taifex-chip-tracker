@@ -9,7 +9,10 @@ import time
 import math
 import warnings
 from pathlib import Path
-from datetime import date, datetime
+from datetime import date, datetime, timezone, timedelta
+
+# 強制使用台灣時區，避免 GitHub Actions (UTC) 拿錯日期
+TW_TZ = timezone(timedelta(hours=8))
 
 import numpy as np
 import pandas as pd
@@ -33,7 +36,7 @@ from taifex_strategy import fetch_large_trader, fetch_retail, fetch_daily_price,
 
 
 def main():
-    today = date.today()
+    today = datetime.now(TW_TZ).date()
     today_str = today.strftime("%Y-%m-%d")
     print(f"\n{'='*50}")
     print(f"  台指期籌碼更新 v2 — {today_str}")
